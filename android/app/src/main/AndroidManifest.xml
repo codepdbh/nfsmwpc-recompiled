@@ -7,12 +7,12 @@
     <uses-feature android:name="android.hardware.vulkan.version" android:version="0x00401000" android:required="true" />
     <application android:requestLegacyExternalStorage="true" android:label="NFS Most Wanted Android Evolved" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="false">
         <activity android:name=".GameActivity" android:exported="true" android:process=":game"
-            android:configChanges="orientation|screenSize|keyboardHidden" android:screenOrientation="landscape">
+            android:configChanges="orientation|screenSize|keyboardHidden" android:screenOrientation="sensorLandscape">
             <meta-data android:name="android.app.lib_name" android:value="nfsmw_android" />
         </activity>
         <activity android:name=".GpuProbeActivity" android:exported="false"
-            android:process=":gpu_probe" android:screenOrientation="landscape" />
-        <activity android:name=".LauncherActivity" android:exported="true" android:screenOrientation="landscape"
+            android:process=":gpu_probe" android:screenOrientation="sensorLandscape" />
+        <activity android:name=".LauncherActivity" android:exported="true" android:screenOrientation="sensorLandscape"
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
