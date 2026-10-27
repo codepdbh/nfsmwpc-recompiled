@@ -185,6 +185,7 @@ final class Lang {
         add("HUD proporcional", "Proportional HUD", "HUD proporcional");
         add("HUD original estirado", "Original stretched HUD", "HUD original esticado");
         add("Minimapa", "Minimap", "Minimapa");
+        add("Canal del desarrollador oficial", "Official developer channel", "Canal del desarrollador oficial");
         add("Arriba a la izquierda", "Top left", "Superior esquerdo");
         add("Abajo a la izquierda (original)", "Bottom left (original)", "Inferior esquerdo (original)");
         add("Sincronía CPU/GPU", "CPU/GPU sync", "Sincronia CPU/GPU");
