@@ -122,12 +122,14 @@ D3DPRESENT_PARAMETERS presentation(uint32_t address){
 bool compressedFormat(D3DFORMAT format){return format>=D3DFMT_DXT1&&format<=D3DFMT_DXT5;}
 D3DFORMAT nativeTextureFormat(IDirect3DDevice9* device,D3DFORMAT format,DWORD usage,D3DRESOURCETYPE type){
     if(!compressedFormat(format)||(usage&(D3DUSAGE_RENDERTARGET|D3DUSAGE_DEPTHSTENCIL)))return format;
-    if(forceCpuTextures.load())return D3DFMT_A8B8G8R8;
+    // DXT1 decodes to 16 bits (decodeDXT1Rect16), the formats with real alpha to 32.
+    const D3DFORMAT decoded=format==D3DFMT_DXT1?D3DFMT_A1R5G5B5:D3DFMT_A8B8G8R8;
+    if(forceCpuTextures.load())return decoded;
     IDirect3D9* d3d=nullptr;D3DDEVICE_CREATION_PARAMETERS parameters{};D3DDISPLAYMODE mode{};
     if(FAILED(device->GetDirect3D(&d3d)))return format;
     device->GetCreationParameters(&parameters);d3d->GetAdapterDisplayMode(parameters.AdapterOrdinal,&mode);
     HRESULT supported=d3d->CheckDeviceFormat(parameters.AdapterOrdinal,parameters.DeviceType,mode.Format,usage,type,format);d3d->Release();
-    return SUCCEEDED(supported)?format:D3DFMT_A8B8G8R8;
+    return SUCCEEDED(supported)?format:decoded;
 }
 void describeOriginal(uint32_t address,D3DSURFACE_DESC* desc){auto view=compressionView(address);if(view.texture&&desc)desc->Format=static_cast<D3DFORMAT>(view.texture->format);}
 }

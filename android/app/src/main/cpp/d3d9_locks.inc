@@ -30,7 +30,7 @@ HRESULT lockPixels(uint32_t address,uint32_t subresource,const D3DSURFACE_DESC& 
             throw std::runtime_error("Invalid compressed lock rectangle");
         if((region.left%4)||(region.top%4)||(region.right%4&&region.right!=static_cast<LONG>(fullWidth))||(region.bottom%4&&region.bottom!=static_cast<LONG>(fullHeight)))
             throw std::runtime_error("Compressed lock rectangle must follow block boundaries");
-        if(native.Pitch<=0||static_cast<uint32_t>(native.Pitch)<static_cast<uint32_t>(region.right-region.left)*4)throw std::runtime_error("Invalid decoded texture pitch");
+        if(native.Pitch<=0||static_cast<uint32_t>(native.Pitch)<static_cast<uint32_t>(region.right-region.left)*(texture.mode()==1?2:4))throw std::runtime_error("Invalid decoded texture pitch");
         uint32_t pitch=texture.pitch(view.level),rows=(region.bottom-region.top+3)/4,bytes=((region.right-region.left+3)/4)*texture.blockBytes();
         uint32_t temporary=allocateGuest(pitch*rows),offset=(region.top/4)*pitch+(region.left/4)*texture.blockBytes();auto& raw=texture.bytes(view.face,view.level);
         if(!(flags&D3DLOCK_DISCARD))for(uint32_t row=0;row<rows;++row)std::memcpy(static_cast<uint8_t*>(pointer(temporary))+row*pitch,raw.data()+offset+row*pitch,bytes);
@@ -54,7 +54,9 @@ void copyLockBack(uint32_t address,uint32_t subresource){
         uint32_t offset=(data.rectangle.top/4)*data.pitch+(data.rectangle.left/4)*texture.blockBytes();
         for(uint32_t row=0;row<data.rows;++row)std::memcpy(raw.data()+offset+row*data.pitch,static_cast<const uint8_t*>(pointer(data.guest))+row*data.pitch,data.rowBytes);
         uint32_t width=texture.mipWidth(data.compressed.level),height=texture.mipHeight(data.compressed.level);
-        decodeDXTRect(texture.mode(),width,height,raw.data(),raw.size(),uint32_t(data.rectangle.left),uint32_t(data.rectangle.top),
+        if(texture.mode()==1)decodeDXT1Rect16(width,height,raw.data(),raw.size(),uint32_t(data.rectangle.left),uint32_t(data.rectangle.top),
+                      uint32_t(data.rectangle.right),uint32_t(data.rectangle.bottom),static_cast<uint8_t*>(data.native),data.nativePitch);
+        else decodeDXTRect(texture.mode(),width,height,raw.data(),raw.size(),uint32_t(data.rectangle.left),uint32_t(data.rectangle.top),
                       uint32_t(data.rectangle.right),uint32_t(data.rectangle.bottom),static_cast<uint8_t*>(data.native),data.nativePitch);
     }
 }

@@ -363,6 +363,10 @@ void regSetValueExA(){
 #include "guest_format.inc"
 static constexpr uint32_t desktopWindow=0xf0000300;
 void desktopHandle(){ret(desktopWindow,0);}
+// Speed.exe destroys its window on the way out (0x006DFA80, after "Quit"); the
+// Android surface stays with the activity, which closes with the process.
+// Reports showed the quit stop as "HLE pendiente: user32.dll!DestroyWindow".
+void destroyWindow(){ret(windows.count(arg(0))?1:0,1);}
 void windowRect(){
     int32_t rectangle[4]={0,0,static_cast<int32_t>(displayWidth.load()),static_cast<int32_t>(displayHeight.load())};
     if(arg(0)!=desktopWindow){auto window=windows.find(arg(0));if(window==windows.end()){lastError=1400;ret(0,2);return;}auto& value=window->second;rectangle[0]=value.x;rectangle[1]=value.y;rectangle[2]=value.x+value.width;rectangle[3]=value.y+value.height;}
@@ -504,7 +508,7 @@ const std::map<std::string,recomp_func_t> windowFunctions={
     {"RegisterClassExA",registerClassEx},{"CreateWindowExA",createWindowEx},{"DefWindowProcA",defaultWindowProc},
     {"GetWindowLongA",getWindowLong},{"SetWindowLongA",setWindowLong},
     {"LoadIconA",loadIcon},{"LoadCursorA",loadCursor},
-    {"GetDesktopWindow",desktopHandle},{"GetWindowRect",windowRect},
+    {"GetDesktopWindow",desktopHandle},{"DestroyWindow",destroyWindow},{"GetWindowRect",windowRect},
     {"SetCapture",setCapture},{"ReleaseCapture",releaseCapture},
     {"GetClientRect",clientRect},{"GetCursorPos",cursorPosition},{"GetSystemMetrics",systemMetrics},
     {"SetCursorPos",setCursorPos},{"CharUpperA",charUpperA}

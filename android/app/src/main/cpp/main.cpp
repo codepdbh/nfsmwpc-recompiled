@@ -12,6 +12,7 @@
 #include <thread>
 #include <chrono>
 #include <filesystem>
+#include <cstdio>
 #include <cstdlib>
 #include <unistd.h>
 #include "vertex_formats.h"
@@ -383,8 +384,22 @@ static void configurePipelineCache(android_app* app){
     setenv("DXVK_STATE_CACHE","1",1);
     __android_log_print(ANDROID_LOG_INFO,"NFSMW","DXVK persistent pipeline state cache: %s",directory.c_str());
 }
+// Speed.exe offers "Shadow detail" only on NVIDIA (D24S8 depth textures, vendor
+// 0x10DE) or ATI (DF16) adapters (0x006C1700) and greyed it out with the phone's
+// real GPU vendor. DXVK reports a GeForce 7800 GTX instead: a card of the game's
+// time, outside the device IDs Speed.exe special-cases (GeForce4 MX, FX 5xxx).
+static void configureAdapterIdentity(android_app* app){
+    const char* files=app->activity->internalDataPath;
+    if(!files||!*files)return;
+    auto path=std::filesystem::path(files)/"dxvk.conf";
+    if(FILE* out=std::fopen(path.c_str(),"w")){
+        std::fputs("d3d9.customVendorId = 10de\nd3d9.customDeviceId = 0091\nd3d9.customDeviceDesc = NVIDIA GeForce 7800 GTX\n",out);
+        std::fclose(out);setenv("DXVK_CONFIG_FILE",path.c_str(),1);
+    }else __android_log_print(ANDROID_LOG_WARN,"NFSMW","dxvk.conf not written: shadow detail stays unavailable");
+}
 void android_main(android_app* app) {
     configurePipelineCache(app);
+    configureAdapterIdentity(app);
     Host host; app->userData = &host; app->onAppCmd = onCommand;app->onInputEvent=onInput;
     try {
         testGuestMemory();

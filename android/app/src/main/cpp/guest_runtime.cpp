@@ -1,3 +1,5 @@
+#include "game_log.h"
+#include "host_performance.h"
 #include <initializer_list>
 #include <set>
 #include <condition_variable>
@@ -339,12 +341,17 @@ void d3dDispatch(){
     if(token==0x7e002110u&&result==0){
         static FramePacer pacer;
         auto now=std::chrono::steady_clock::now();
+        // Work since the frame began, without the pacer's wait, for the system's frame hints.
+        static FrameWorkHint frameHint;static std::chrono::steady_clock::time_point frameBegan=now;
+        {unsigned limit=frameLimit.load(std::memory_order_relaxed);
+         frameHint.reportFrame(std::chrono::duration_cast<std::chrono::nanoseconds>(now-frameBegan).count(),1000000000ll/(limit?limit:60));}
         auto deadline=pacer.deadline(now,frameLimit.load(std::memory_order_relaxed));
         // The renderer has returned; guest audio/streaming workers can use the
         // machine while this thread waits. Late frames incur no extra delay.
         renderThread=true;
         if(deadline>now)yieldGuestMachine(0,deadline);
         else if(machine.hasWaiters())yieldGuestMachine();
+        frameBegan=std::chrono::steady_clock::now();
         static unsigned frames=0;static auto since=std::chrono::steady_clock::now();
         if(++frames==120){serviceGuestSound();auto now=std::chrono::steady_clock::now();double seconds=std::chrono::duration<double>(now-since).count();
             NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSMW","Guest D3D9 presentation %.1f FPS over %.2f seconds; bridge ~%.2f ms/frame (present %.2f), %.0f calls/frame",
@@ -757,6 +764,7 @@ extern "C" void recomp_dump_trace(const char*) {}
 // resolution menu is not mapped yet, so the game keeps its own modes and DXVK scales.)
 
 std::string connectGuestRuntime(const char* executable) {
+    stayOnPerformanceCores();
     std::unique_lock<MachineMutex> guard(machine);machineLease=&guard;
     if (memory) return "Runtime guest ya inicializado";
     State original; original.save();
