@@ -11,7 +11,15 @@ android {
         versionName '0.1.14'
         // -PnfsAbi=armeabi-v7a builds the separate 32-bit APK.
         ndk { abiFilters(project.findProperty('nfsAbi') ?: 'arm64-v8a') }
-        externalNativeBuild { cmake { arguments '-DANDROID_STL=c++_static' } }
+        // Optimisations from the NFSU2 port (see src/main/cpp/CMakeLists.txt): -PnfsCpu=cortex-a720 builds
+        // for one SoC (Xiaomi 15T); -PnfsFast fixed guest base; -PnfsNoYield no loop yields; -PnfsOpt=O3;
+        // -PnfsPgo=generate|use with -PnfsPgoProfile=<merged .profdata>.
+        externalNativeBuild { cmake { arguments '-DANDROID_STL=c++_static', "-DNFS_GUEST_CPU=${project.findProperty('nfsCpu') ?: ''}",
+            "-DNFS_GUEST_FAST=${project.hasProperty('nfsFast') ? 'ON' : 'OFF'}",
+            "-DNFS_GUEST_NO_YIELD=${project.hasProperty('nfsNoYield') ? 'ON' : 'OFF'}",
+            "-DNFS_GUEST_OPT=${project.findProperty('nfsOpt') ?: 'O2'}",
+            "-DNFS_PGO=${project.findProperty('nfsPgo') ?: ''}",
+            "-DNFS_PGO_PROFILE=${project.findProperty('nfsPgoProfile') ?: ''}" } }
     }
     externalNativeBuild { cmake { path file('src/main/cpp/CMakeLists.txt'); version '3.30.5' } }
     // adrenotools opens its namespace hook libraries by path from nativeLibraryDir.

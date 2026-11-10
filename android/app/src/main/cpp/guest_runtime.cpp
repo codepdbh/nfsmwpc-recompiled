@@ -33,6 +33,7 @@
 #include <atomic>
 #include <unistd.h>
 #include <pthread.h>
+#include <sched.h>
 #include <filesystem>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -108,42 +109,81 @@ std::unique_ptr<GuestHeaps> heaps;
 // ring too late, and the mixer replayed stale data ("the sound loops"). The
 // same starvation made the Windows build stutter until native32 got a ticket
 // lock. Here every unlock hands the machine to the longest waiter.
+//
+// (Ported from the NFSU2 port's event-driven scheduler.) unlock() hands the
+// machine straight to the longest-queued thread (no ticket window a newcomer
+// could barge into) and wakes only that thread -- a single shared condition
+// variable woke every waiter per handover. The render thread may jump the
+// queue, bounded: never past a thread already queued for 2 ms (less than half
+// an AAudio burst, so the mixer always gets its turn within a burst) and never
+// more than 3 times in a row.
+thread_local bool machinePriority=false;   // the thread that presents frames
 class MachineMutex {
+    struct Waiter{std::thread::id id;std::condition_variable cv;std::chrono::steady_clock::time_point since;bool priority;};
     std::mutex m_;
-    std::condition_variable cv_;
-    uint64_t next_=0,serving_=0;
-    std::thread::id owner_{};
-    unsigned depth_=0;
+    std::vector<Waiter*> waiters_;   // FIFO; a waiter lives on its thread's stack until served
+    std::atomic<std::thread::id> owner_{};   // atomic: queued threads spin on it before sleeping
+    unsigned depth_=0,priorityJumps_=0;
+    static constexpr std::chrono::milliseconds maxQueueBeforeFair{2};
+    static constexpr unsigned maxPriorityJumps=3;
+    // A queued thread spins this long before sleeping on its condition
+    // variable: a futex wake cost ~0.3 ms per handover on the NFSU2 port's
+    // test phone, most of the render thread's waiting.
+#if defined(NFS_GUEST_FAST)
+    static constexpr std::chrono::microseconds spinBeforeSleep{1500},prioritySpinBeforeSleep{4000};
+#else
+    static constexpr std::chrono::microseconds spinBeforeSleep{500},prioritySpinBeforeSleep{2000};   // portable build: less heat
+#endif
 public:
     void lock(){
         const auto me=std::this_thread::get_id();
         std::unique_lock<std::mutex> l(m_);
-        if(owner_==me){++depth_;return;}
-        const uint64_t ticket=next_++;
-        cv_.wait(l,[&]{return serving_==ticket;});
-        owner_=me;depth_=1;acquired=std::chrono::steady_clock::now();
+        if(owner_.load(std::memory_order_relaxed)==me){++depth_;return;}
+        auto queued=std::chrono::steady_clock::now();
+        if(owner_.load(std::memory_order_relaxed)==std::thread::id{}&&waiters_.empty()){owner_=me;depth_=1;acquired=queued;return;}
+        Waiter self{me,{},queued,machinePriority};
+        waiters_.push_back(&self);
+        l.unlock();
+        auto spinUntil=queued+(machinePriority?prioritySpinBeforeSleep:spinBeforeSleep);
+        // sched_yield per iteration (a bare yield instruction kept the core from
+        // the thread being waited for); the clock is read every 8 iterations.
+        for(unsigned spins=0;owner_.load(std::memory_order_acquire)!=me;){
+            if((++spins&7u)==0&&std::chrono::steady_clock::now()>=spinUntil)break;
+            sched_yield();
+        }
+        l.lock();
+        self.cv.wait(l,[&]{return owner_.load(std::memory_order_relaxed)==me;});   // unlock() removed us from the queue and handed over
+        depth_=1;acquired=std::chrono::steady_clock::now();
     }
     // When the current owner got the machine; only the owner reads it.
     std::chrono::steady_clock::time_point acquired{};
     bool try_lock(){
         const auto me=std::this_thread::get_id();
         std::lock_guard<std::mutex> l(m_);
-        if(owner_==me){++depth_;return true;}
-        if(next_!=serving_)return false;
-        ++next_;owner_=me;depth_=1;acquired=std::chrono::steady_clock::now();return true;
+        if(owner_.load(std::memory_order_relaxed)==me){++depth_;return true;}
+        if(owner_.load(std::memory_order_relaxed)!=std::thread::id{}||!waiters_.empty())return false;
+        owner_=me;depth_=1;acquired=std::chrono::steady_clock::now();return true;
     }
     bool hasWaiters(){
         std::lock_guard<std::mutex> lock(m_);
-        return next_>serving_+1; // the current owner already holds one ticket
+        return !waiters_.empty();
     }
     void unlock(){
-        {
-            std::lock_guard<std::mutex> l(m_);
-            if(--depth_)return;
-            owner_={};++serving_;
-            if(next_==serving_)return;          // nobody waiting
+        std::lock_guard<std::mutex> l(m_);
+        if(--depth_)return;
+        if(waiters_.empty()){owner_.store(std::thread::id{},std::memory_order_release);return;}
+        size_t pick=0;
+        for(size_t i=1;i<waiters_.size();++i)if(waiters_[i]->priority){pick=i;break;}
+        if(pick){
+            bool fair=std::chrono::steady_clock::now()-waiters_[0]->since>=maxQueueBeforeFair||priorityJumps_>=maxPriorityJumps;
+            if(fair)pick=0;else ++priorityJumps_;
         }
-        cv_.notify_all();
+        if(!pick)priorityJumps_=0;
+        Waiter* next=waiters_[pick];waiters_.erase(waiters_.begin()+ptrdiff_t(pick));
+        owner_.store(next->id,std::memory_order_release);
+        // Notified under m_: a spurious wakeup could otherwise see owner_==me,
+        // return and destroy the Waiter before notify_one touched it.
+        next->cv.notify_one();
     }
 };
 MachineMutex machine;
@@ -241,18 +281,79 @@ void checkGuestProgress() {
     //
     // Slices count from when this thread acquired the machine (a shared
     // deadline left the incoming thread an expired slice, so it handed the
-    // machine straight back). The render thread, the one presenting, gets
-    // 3 ms and the others 500 us: every handover wakes the queued threads in
-    // turn, and with 500 us slices the Underground 2 render thread spent 56%
+    // machine straight back). The render thread, the one presenting, got
+    // 3 ms and the others 500 us while every handover woke the queued threads
+    // in turn: with 500 us slices the Underground 2 render thread spent 56%
     // of its wall time waiting to get the machine back (Redmi Note 8).
     static unsigned checkpoints=0;
     if((++checkpoints&63u)==0){
         auto now=std::chrono::steady_clock::now();
         if(now>bootDeadline)throw GuestStop("CRT bring-up time budget reached at "+hex(g_cur_func));
-        auto slice=renderThread?std::chrono::microseconds(3000):std::chrono::microseconds(500);
+        // With spinning handovers (MachineMutex) a slice costs the render
+        // thread only the other thread's hold time, so it yields almost as
+        // soon as somebody queues: 3 ms slices left waiters asleep past their
+        // spin budget and each handover cost a futex wake (NFSU2 port).
+        auto slice=renderThread?std::chrono::microseconds(300):std::chrono::microseconds(500);
         if(now-machine.acquired>=slice){pollGuestNetwork();if(machine.hasWaiters())yieldGuestMachine();}
     }
     if(!guestThreadFault.empty())throw GuestStop(guestThreadFault);
+}
+// Event-driven guest waits (ported from the NFSU2 port). Guest wait objects
+// (events, mutexes, semaphores, threads, timers, critical sections, window
+// messages) change only under the machine lock or messageMutex. A blocked
+// thread registers the objects it waits on, releases the machine and sleeps
+// until one of them is signaled or its deadline passes, instead of re-queuing
+// for the machine every millisecond: each polling thread was a handover the
+// render thread had to wait for. Signals are per object; nullptr wakes every
+// blocked thread (stop, pause, TerminateThread). Registration precedes the
+// readiness check, so a signal from a host thread (window messages) between
+// the check and the sleep is still seen. The 50 ms cap turns a forgotten
+// signaler into slow polling rather than a hang; while overlapped Winsock
+// receives are pending their events are set by whoever polls the sockets,
+// without a signal, so the cap is the old 1 ms poll then.
+struct SyncWaiter{const void* const* keys;size_t count;bool woken=false;std::condition_variable cv;};
+std::mutex syncMutex;std::vector<SyncWaiter*> syncWaiters;
+void signalGuestSync(const void* key=nullptr){
+    std::lock_guard<std::mutex> l(syncMutex);
+    for(auto* waiter:syncWaiters){
+        if(waiter->woken)continue;
+        bool hit=!key;for(size_t i=0;!hit&&i<waiter->count;++i)hit=waiter->keys[i]==key;
+        if(hit){waiter->woken=true;waiter->cv.notify_one();}   // under syncMutex: the waiter cannot leave before this
+    }
+}
+constexpr auto syncSafetyCap=std::chrono::milliseconds(50);
+constexpr auto noDeadline=std::chrono::steady_clock::time_point::max();
+std::chrono::steady_clock::time_point guestDeadline(uint32_t milliseconds){
+    return milliseconds==UINT32_MAX?noDeadline:std::chrono::steady_clock::now()+std::chrono::milliseconds(milliseconds);
+}
+bool guestNetworkPending();   // overlapped receives outstanding (guest_network_overlapped.inc)
+// ready() runs under the machine lock; returns false on deadline. wakeBy()
+// (under the machine lock too) is an extra time to re-check without a signal:
+// the due time of a waitable timer the wait covers.
+template<class Ready,class WakeBy> bool blockGuestUntil(Ready&& ready,std::chrono::steady_clock::time_point deadline,const void* const* keys,size_t count,WakeBy&& wakeBy){
+    for(;;){
+        SyncWaiter self{keys,count};
+        {std::lock_guard<std::mutex> l(syncMutex);syncWaiters.push_back(&self);}
+        struct Unregister{SyncWaiter* self;~Unregister(){std::lock_guard<std::mutex> l(syncMutex);syncWaiters.erase(std::find(syncWaiters.begin(),syncWaiters.end(),self));}} unregister{&self};
+        checkGuestProgress();
+        if(ready())return true;
+        auto now=std::chrono::steady_clock::now();
+        if(now>=deadline)return false;
+        auto wake=std::min(deadline,now+(guestNetworkPending()?std::chrono::milliseconds(1):syncSafetyCap));
+        wake=std::min(wake,wakeBy());
+        if(!machineLease||!machineLease->owns_lock())throw GuestStop("Guest scheduler ownership missing");
+        {auto& trace=currentTrace();trace.func=g_cur_func;trace.esp=g_esp;}
+        State saved;saved.save();machineLease->unlock();
+        {std::unique_lock<std::mutex> l(syncMutex);
+         self.cv.wait_until(l,wake,[&]{return self.woken||stopRequested.load()||guestPaused.load();});}
+        machineLease->lock();saved.load();
+    }
+}
+template<class Ready> bool blockGuestUntil(Ready&& ready,std::chrono::steady_clock::time_point deadline,const void* const* keys,size_t count){
+    return blockGuestUntil(ready,deadline,keys,count,[]{return noDeadline;});
+}
+template<class Ready> bool blockGuestUntil(Ready&& ready,std::chrono::steady_clock::time_point deadline,std::initializer_list<const void*> keys={}){
+    return blockGuestUntil(ready,deadline,keys.begin(),keys.size());
 }
 constexpr uint32_t importBase = 0x7f000000u;
 constexpr uint32_t stackBase = 0x20000000u, stackSize = 16u << 20, tib = 0x21000000u;
@@ -348,14 +449,16 @@ void d3dDispatch(){
         auto deadline=pacer.deadline(now,frameLimit.load(std::memory_order_relaxed));
         // The renderer has returned; guest audio/streaming workers can use the
         // machine while this thread waits. Late frames incur no extra delay.
-        renderThread=true;
+        renderThread=true;machinePriority=true;
         if(deadline>now)yieldGuestMachine(0,deadline);
         else if(machine.hasWaiters())yieldGuestMachine();
         frameBegan=std::chrono::steady_clock::now();
         static unsigned frames=0;static auto since=std::chrono::steady_clock::now();
         if(++frames==120){serviceGuestSound();auto now=std::chrono::steady_clock::now();double seconds=std::chrono::duration<double>(now-since).count();
-            NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSMW","Guest D3D9 presentation %.1f FPS over %.2f seconds; bridge ~%.2f ms/frame (present %.2f), %.0f calls/frame",
-                frames/seconds,seconds,double(bridgeTime.count())/1e6/frames,double(presentTime.count())/1e6/frames,double(bridgeCalls)/frames);
+            uint64_t constantSets=0,constantHits=0;d3d9ShaderConstantStats(&constantSets,&constantHits);
+            NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSMW","Guest D3D9 presentation %.1f FPS over %.2f seconds; bridge ~%.2f ms/frame (present %.2f), %.0f calls/frame; shader constants %.0f/frame, %.0f%% duplicate",
+                frames/seconds,seconds,double(bridgeTime.count())/1e6/frames,double(presentTime.count())/1e6/frames,double(bridgeCalls)/frames,
+                double(constantSets)/frames,constantSets?100.0*double(constantHits)/double(constantSets):0.0);
             frames=0;since=now;bridgeTime=presentTime=std::chrono::nanoseconds{};bridgeCalls=0;}
     }ret(result,count);}
 #endif
@@ -372,6 +475,7 @@ inline uint32_t callGuest(uint32_t va,const std::vector<uint32_t>& args,uint32_t
 #include "guest_audio.inc"
 #include "guest_network.inc"
 #include "guest_msvcrt.inc"
+bool guestNetworkPending(){return !net::receives.empty();}
 uint32_t terminationTestEvent=0,terminationTestWait=0,terminationTestTerminate=0;
 std::set<uint32_t> terminationTestEntered;
 void terminationTestEntry(){
@@ -735,11 +839,12 @@ extern "C" recomp_func_t recomp_lookup_manual(uint32_t va) {
 }
 extern "C" recomp_func_t recomp_lookup_import(uint32_t va) {
     checkGuestProgress();
-    if(va>=soundMethodBase+0x1000&&va<soundMethodBase+0x3000&&!(va%16)){soundToken=va;return soundDispatch;}
-    if(va>=inputMethodBase+0x1000&&va<inputMethodBase+0x5000&&!(va%16)){inputToken=va;return inputDispatch;}  // kinds 1-4: DirectInput, keyboard, mouse, gamepad
 #if defined(__ANDROID__) || defined(NFS_D3D9_BACKEND)
+    // First: nearly all import calls of a race frame are D3D9 methods.
     if(va>=0x7e001000u&&va<0x7e010000u&&!(va%16)){d3dToken=va;return d3dDispatch;}
 #endif
+    if(va>=soundMethodBase+0x1000&&va<soundMethodBase+0x3000&&!(va%16)){soundToken=va;return soundDispatch;}
+    if(va>=inputMethodBase+0x1000&&va<inputMethodBase+0x5000&&!(va%16)){inputToken=va;return inputDispatch;}  // kinds 1-4: DirectInput, keyboard, mouse, gamepad
     if (va<importBase || (va-importBase)%16) return nullptr;
     uint32_t index=(va-importBase)/16;
     if (index>=imports.size()) return nullptr;
@@ -747,6 +852,29 @@ extern "C" recomp_func_t recomp_lookup_import(uint32_t va) {
     if(++imports[index].calls<=3)
         NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSMW","Guest import %s from %08x",imports[index].name.c_str(),g_cur_func);
     return imports[index].function;
+}
+// The resolver behind RECOMP_ICALL/RECOMP_ITAIL (arm64_guest.h), as in the NFSU2 port.
+extern "C" recomp_func_t nfs_icall_resolve(uint32_t va) {
+    // Sound, input, D3D9 and import stubs (0x7c000000..0x7fffffff): nothing lifted
+    // or overridden lives there (DispatchHash rejects it; the self-test callbacks
+    // sit at 0x7b...), so the vtable calls of a frame skip both probes.
+    if(va-0x7c000000u<0x04000000u)return recomp_lookup_import(va);
+    // Manual lookups come first and are never cached: self-test callbacks,
+    // EA sound-bank routines identified by content in the heap arenas
+    // (nfs_abk_lookup), overrides -- the same address can change meaning.
+    recomp_func_t fn=recomp_lookup_manual(va);if(fn)return fn;
+    // Direct-mapped cache of lifted targets (speed.exe, d3dx9_26, server.dll):
+    // the vtable calls of a frame repeat a few hundred addresses tens of
+    // thousands of times, each an open-addressing probe. recomp_lookup is a
+    // fixed table, so a cached hit is always what it would return. Lifted code
+    // runs only under the machine lock, so the plain array needs no atomics.
+    struct Entry{uint32_t va;recomp_func_t fn;};
+    static Entry cache[4096]{};
+    Entry& entry=cache[(va^(va>>12))&4095u];
+    if(entry.va==va&&entry.fn)return entry.fn;
+    fn=recomp_lookup(va);
+    if(fn){entry.va=va;entry.fn=fn;return fn;}
+    return recomp_lookup_import(va);
 }
 extern "C" void recomp_unresolved(const char* kind,uint32_t va,uint32_t from) {
     NFS_RUNTIME_LOG(ANDROID_LOG_ERROR,"NFSMW","Unresolved %s %08x from %08x: eax=%08x ebx=%08x ecx=%08x edx=%08x esi=%08x edi=%08x esp=%08x",
@@ -830,12 +958,13 @@ std::string connectGuestRuntime(const char* executable) {
         return std::string("Arranque guest detenido: ")+e.what();
     }
 }
-void requestGuestRuntimeStop() {stopRequested=true;}
+void requestGuestRuntimeStop() {stopRequested=true;signalGuestSync();}
 void setGuestPaused(bool paused) {
     // The AAudio stream keeps pulling from looping voices while the guest is
     // paused: in the background the last mixed sound repeated until the app
     // closed. Pause the output with the guest and restart it on resume.
     bool previous=guestPaused.exchange(paused);
+    signalGuestSync();   // blocked guest threads re-check guestPaused
     if(previous!=paused&&soundStream){
         aaudio_result_t status=paused?AAudioStream_requestPause(soundStream):AAudioStream_requestStart(soundStream);
         if(status!=AAUDIO_OK)NFS_RUNTIME_LOG(ANDROID_LOG_WARN,"NFS","Audio %s failed: %d",paused?"pause":"resume",int(status));

@@ -9,6 +9,15 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
 else()
     set(NFS_CUSTOM_DRIVERS OFF)
 endif()
+# -PnfsCpu=<cpu> (gradle) tunes every native target, DXVK included, for one
+# SoC: e.g. cortex-a720 for the Dimensity 8400 (Xiaomi 15T). Such a build does
+# not run on older cores. Empty = the portable ARMv8-A baseline. SVE/SVE2 stay
+# off: kernels commonly leave them disabled for userspace even on cores that
+# implement them (SIGILL at launch in the NFSU2 port).
+set(NFS_GUEST_CPU "" CACHE STRING "clang -mcpu value for all native code (empty = baseline)")
+if(NFS_GUEST_CPU)
+    add_compile_options("-mcpu=${NFS_GUEST_CPU}+nosve+nosve2+nosve2-bitperm")
+endif()
 add_library(native_app_glue STATIC "${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c")
 target_include_directories(native_app_glue PUBLIC "${ANDROID_NDK}/sources/android/native_app_glue")
 get_filename_component(NFS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../../.." ABSOLUTE)
@@ -84,7 +93,9 @@ target_include_directories(nfs_guest PRIVATE "${PCRECOMP}/runtime/recomp32" "${G
 target_compile_definitions(nfs_guest PRIVATE RECOMP_STRICT_ICALL RECOMP_LOCAL_REGS RECOMP_X87_WINDOW "RECOMP_MEM_QUAL=")
 # Optimize the ARM64 game while avoiding aliasing assumptions in x86 accesses;
 # retain unwind tables so unsupported HLE paths can exit to the host cleanly.
-target_compile_options(nfs_guest PRIVATE -O2 -w -fwrapv -fno-strict-aliasing -fexceptions -ffp-contract=off
+# NFS_GUEST_OPT: -O2 (default) or -O3 for the lifted game code; gradle -PnfsOpt=O3.
+set(NFS_GUEST_OPT "O2" CACHE STRING "Optimisation level of the lifted game code (O2 or O3)")
+target_compile_options(nfs_guest PRIVATE -${NFS_GUEST_OPT} -w -fwrapv -fno-strict-aliasing -fexceptions -ffp-contract=off
     -include "${CMAKE_CURRENT_SOURCE_DIR}/arm64_guest.h")
 # The ~27,700 lifted functions are internal to the library: hidden visibility
 # turns their cross-file calls from PLT stubs into direct calls, and ThinLTO
@@ -121,8 +132,60 @@ if(SERVER_GEN_SOURCES)
 endif()
 target_compile_features(nfsmw_android PRIVATE cxx_std_17)
 target_compile_definitions(nfsmw_android PRIVATE VK_USE_PLATFORM_ANDROID_KHR)
-target_compile_options(nfsmw_android PRIVATE -O2 -fno-strict-aliasing -ffp-contract=off -Wall -Wextra -Werror -Wno-missing-field-initializers)
+# Hidden by default (NFSU2 port): the lifted code reaches recomp_lookup*, the
+# import bridges and the override table on every indirect call, and default
+# visibility sent each hop through the PLT. JNIEXPORT keeps the Java entry
+# points exported; ANativeActivity_onCreate comes from native_app_glue (-u).
+target_compile_options(nfsmw_android PRIVATE -O2 -fvisibility=hidden -fno-strict-aliasing -ffp-contract=off -Wall -Wextra -Werror -Wno-missing-field-initializers)
 target_link_options(nfsmw_android PRIVATE "-uANativeActivity_onCreate")
+# -PnfsFast (gradle): guest memory at a fixed host address so the lifted code
+# adds an immediate, and no frame pointers. The 4 GB reservation at
+# 0x100000000 needs a 64-bit process; see arm64_guest.h and guest_memory.h.
+# Lifted loop yields stay unless -PnfsNoYield (NFS_GUEST_NO_YIELD) as well.
+option(NFS_GUEST_FAST "Fixed guest base, no frame pointers" OFF)
+option(NFS_GUEST_NO_YIELD "No scheduler yield counter in lifted loops" OFF)
+if(NFS_GUEST_FAST OR NFS_GUEST_NO_YIELD)
+    if(NOT ANDROID_ABI STREQUAL "arm64-v8a")
+        message(FATAL_ERROR "NFS_GUEST_FAST / NFS_GUEST_NO_YIELD need arm64-v8a")
+    endif()
+endif()
+if(NFS_GUEST_FAST)
+    foreach(target nfs_guest nfsmw_android)
+        target_compile_definitions(${target} PRIVATE NFS_GUEST_FAST NFS_GUEST_FIXED_BASE=0x100000000ull)
+        target_compile_options(${target} PRIVATE -fomit-frame-pointer)
+    endforeach()
+endif()
+if(NFS_GUEST_NO_YIELD)
+    target_compile_definitions(nfs_guest PRIVATE NFS_GUEST_NO_YIELD)
+endif()
+# Instrumented profile-guided optimisation (as in the NFSU2 port, +32% fps
+# there). -PnfsPgo=generate builds an instrumented APK that writes
+# <external files>/pgo/default_<hash>.profraw when the file
+# <external files>/pgo/dump appears; llvm-profdata merge -output=nfsmw.profdata
+# *.profraw, then -PnfsPgo=use -PnfsPgoProfile=<path>. generate and use must
+# agree on every other flag (NFS_GUEST_CPU/FAST/NO_YIELD/OPT, lift output): the
+# profile is keyed by function name and control-flow hash and silently drops
+# mismatches.
+set(NFS_PGO "" CACHE STRING "Profile-guided optimisation: empty, generate or use")
+set(NFS_PGO_PROFILE "" CACHE FILEPATH "Merged .profdata for NFS_PGO=use")
+if(NFS_PGO STREQUAL "generate")
+    foreach(target nfs_guest nfsmw_android)
+        target_compile_options(${target} PRIVATE -fprofile-generate -fprofile-update=atomic)
+    endforeach()
+    target_compile_definitions(nfsmw_android PRIVATE NFS_PGO_GENERATE)
+    target_link_options(nfsmw_android PRIVATE -fprofile-generate)
+elseif(NFS_PGO STREQUAL "use")
+    if(NOT EXISTS "${NFS_PGO_PROFILE}")
+        message(FATAL_ERROR "NFS_PGO=use needs NFS_PGO_PROFILE=<merged .profdata>")
+    endif()
+    foreach(target nfs_guest nfsmw_android)
+        target_compile_options(${target} PRIVATE "-fprofile-use=${NFS_PGO_PROFILE}"
+            -Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date -Wno-profile-instr-missing -Wno-backend-plugin)
+    endforeach()
+    target_link_options(nfsmw_android PRIVATE "-fprofile-use=${NFS_PGO_PROFILE}")
+elseif(NOT NFS_PGO STREQUAL "")
+    message(FATAL_ERROR "NFS_PGO must be empty, generate or use")
+endif()
 target_link_libraries(nfsmw_android PRIVATE native_app_glue android log vulkan dxvk_android aaudio dl)
 if(NFS_GUEST_LTO)
     target_link_options(nfsmw_android PRIVATE -flto=thin "-Wl,--thinlto-jobs=4"
