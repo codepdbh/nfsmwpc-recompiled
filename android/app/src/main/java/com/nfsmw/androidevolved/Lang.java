@@ -116,6 +116,12 @@ final class Lang {
         add("Guardar", "Save", "Salvar");
         add("Restaurar", "Restore", "Restaurar");
         add("Volver", "Back", "Voltar");
+        add("Ajustes para tu teléfono", "Settings for your phone", "Ajustes para o seu telefone");
+        add("La GPU de este teléfono no llega a resolución nativa o al 75%: el juego va lento y el sonido se corta. ¿Usar resolución al 50%? Puedes cambiarlo después en Opciones.",
+                "This phone's GPU cannot keep up at native or 75% resolution: the game runs slowly and the sound cuts out. Use 50% resolution? You can change it later in Options.",
+                "A GPU deste telefone não aguenta a resolução nativa ou 75%: o jogo fica lento e o som corta. Usar resolução de 50%? Você pode mudar depois em Opções.");
+        add("Usar ajustes ligeros", "Use light settings", "Usar ajustes leves");
+        add("Jugar así", "Play like this", "Jogar assim");
         add("Cerrar", "Close", "Fechar");
         add("El modo online del juego (EA Nation) se conecta a este servidor de la comunidad en lugar de los servidores de EA, ya cerrados.",
                 "The game's online mode (EA Nation) connects to this community server instead of EA's servers, which are closed.",
