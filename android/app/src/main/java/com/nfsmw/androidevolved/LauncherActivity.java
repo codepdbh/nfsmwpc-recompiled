@@ -363,6 +363,29 @@ public final class LauncherActivity extends Activity {
                 .setNegativeButton(tr("Cancelar"), null).show();
     }
 
+    /** Title of the driver dialog: this phone's GPU and the driver that suits it (GpuAdvice). */
+    private android.view.View driverAdviceTitle() {
+        String renderer = GpuAdvice.renderer(this);
+        float density = getResources().getDisplayMetrics().density;
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this);
+        box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        int padding = Math.round(22 * density);
+        box.setPadding(padding, padding, padding, Math.round(6 * density));
+        android.widget.TextView title = new android.widget.TextView(this);
+        title.setText(tr("Driver Vulkan"));
+        title.setTextSize(20);
+        title.setTextColor(0xFFFFFFFF);
+        title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        android.widget.TextView advice = new android.widget.TextView(this);
+        advice.setText((renderer.isEmpty() ? "" : "GPU: " + renderer + "\n") + tr(GpuAdvice.advice(GpuAdvice.family(renderer))));
+        advice.setTextSize(14);
+        advice.setTextColor(0xCCFFFFFF);
+        advice.setPadding(0, Math.round(8 * density), 0, 0);
+        box.addView(title);
+        box.addView(advice);
+        return box;
+    }
+
     private void chooseDriver() {
         List<GpuDrivers.Driver> drivers = GpuDrivers.list(this);
         String[] names = new String[drivers.size() + 1];
@@ -372,10 +395,13 @@ public final class LauncherActivity extends Activity {
             names[i + 1] = drivers.get(i).name;
             if (drivers.get(i).id.equals(GpuDrivers.selectedId(this))) selected = i + 1;
         }
-        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(tr("Driver Vulkan"))
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setCustomTitle(driverAdviceTitle())
                 .setSingleChoiceItems(names, selected, (dialog, which) -> {
                     GpuDrivers.select(this, which == 0 ? "" : drivers.get(which - 1).id);
                     refreshOptions(); dialog.dismiss();
+                    String renderer = GpuAdvice.renderer(this);
+                    if (which > 0 && GpuAdvice.mismatched(GpuAdvice.family(renderer), drivers.get(which - 1).name))
+                        message(tr("Driver Vulkan"), tr("Este driver no es para tu GPU (%s): el juego probablemente no arrancará. Elige el driver del sistema o uno hecho para tu GPU.", renderer));
                 })
                 .setPositiveButton(tr("Importar ZIP"), (dialog, which) -> startActivityForResult(
                         new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE),

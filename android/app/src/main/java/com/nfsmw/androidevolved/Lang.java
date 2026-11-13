@@ -116,6 +116,30 @@ final class Lang {
         add("Guardar", "Save", "Salvar");
         add("Restaurar", "Restore", "Restaurar");
         add("Volver", "Back", "Voltar");
+        add("Recomendado para tu Snapdragon: Turnip (Mesa) para Adreno 6xx/7xx si el driver del sistema va lento o con errores gráficos. PanVK no sirve para Adreno.",
+                "Recommended for your Snapdragon: Turnip (Mesa) for Adreno 6xx/7xx if the system driver is slow or shows graphics glitches. PanVK does not work on Adreno.",
+                "Recomendado para o seu Snapdragon: Turnip (Mesa) para Adreno 6xx/7xx se o driver do sistema estiver lento ou com erros gráficos. PanVK não funciona em Adreno.");
+        add("Recomendado: el driver del sistema. Turnip para esta Adreno es experimental.",
+                "Recommended: the system driver. Turnip for this Adreno is experimental.",
+                "Recomendado: o driver do sistema. Turnip para esta Adreno é experimental.");
+        add("Recomendado para tu GPU Mali: PanVK (Mesa) si el driver del sistema va lento o con errores gráficos. Turnip no sirve para Mali.",
+                "Recommended for your Mali GPU: PanVK (Mesa) if the system driver is slow or shows graphics glitches. Turnip does not work on Mali.",
+                "Recomendado para a sua GPU Mali: PanVK (Mesa) se o driver do sistema estiver lento ou com erros gráficos. Turnip não funciona em Mali.");
+        add("Recomendado: el driver del sistema. PanVK en Mali-G52/G72/G76 o más antiguas es experimental, y Turnip no sirve para Mali.",
+                "Recommended: the system driver. PanVK on Mali-G52/G72/G76 or older is experimental, and Turnip does not work on Mali.",
+                "Recomendado: o driver do sistema. PanVK em Mali-G52/G72/G76 ou mais antigas é experimental, e Turnip não funciona em Mali.");
+        add("Recomendado: el driver del sistema. No hay un driver alternativo estable para PowerVR; Turnip y PanVK no funcionan en esta GPU.",
+                "Recommended: the system driver. There is no stable replacement driver for PowerVR; Turnip and PanVK do not work on this GPU.",
+                "Recomendado: o driver do sistema. Não há driver alternativo estável para PowerVR; Turnip e PanVK não funcionam nesta GPU.");
+        add("Recomendado: el driver del sistema. Turnip y PanVK no funcionan en las GPU Xclipse de Samsung.",
+                "Recommended: the system driver. Turnip and PanVK do not work on Samsung's Xclipse GPUs.",
+                "Recomendado: o driver do sistema. Turnip e PanVK não funcionam nas GPUs Xclipse da Samsung.");
+        add("Recomendado: el driver del sistema.",
+                "Recommended: the system driver.",
+                "Recomendado: o driver do sistema.");
+        add("Este driver no es para tu GPU (%s): el juego probablemente no arrancará. Elige el driver del sistema o uno hecho para tu GPU.",
+                "This driver is not for your GPU (%s): the game will probably not start. Choose the system driver or one made for your GPU.",
+                "Este driver não é para a sua GPU (%s): o jogo provavelmente não vai iniciar. Escolha o driver do sistema ou um feito para a sua GPU.");
         add("Ajustes para tu teléfono", "Settings for your phone", "Ajustes para o seu telefone");
         add("La GPU de este teléfono no llega a resolución nativa o al 75%: el juego va lento y el sonido se corta. ¿Usar resolución al 50%? Puedes cambiarlo después en Opciones.",
                 "This phone's GPU cannot keep up at native or 75% resolution: the game runs slowly and the sound cuts out. Use 50% resolution? You can change it later in Options.",
