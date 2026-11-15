@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <map>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -160,11 +161,18 @@ inline bool resolveAny(const std::filesystem::path& gameRoot,
 }
 
 
+inline bool internalPath(const std::filesystem::path& relative) {
+    if (relative.empty() || relative == ".") return true;
+    auto first = relative.begin();
+    if (first == relative.end()) return false;
+    const auto top = lowerName(first->string());
+    return top == "modloader" || top == "_outside";
+}
+
 inline bool resolveDirectory(const std::filesystem::path& gameRoot,
         const std::filesystem::path& relative, std::filesystem::path& replacement,
         std::string& modName) {
-    if (!safeRelative(relative) || relative == "." || relative == "modloader" || relative == "_outside")
-        return false;
+    if (!safeRelative(relative) || relative == "." || internalPath(relative)) return false;
     bool found = false;
     for (const auto& mod : enabledModDirectories(gameRoot)) {
         const auto candidate = caseInsensitivePath(mod, relative);
@@ -174,7 +182,7 @@ inline bool resolveDirectory(const std::filesystem::path& gameRoot,
             continue;
         replacement = candidate;
         modName = mod.filename().string();
-        found = true; // Same alphabetical priority as file replacement.
+        found = true;
     }
     return found;
 }
@@ -182,8 +190,7 @@ inline bool resolveDirectory(const std::filesystem::path& gameRoot,
 inline std::vector<std::filesystem::path> overlayDirectories(
         const std::filesystem::path& gameRoot, const std::filesystem::path& relative) {
     std::vector<std::filesystem::path> result;
-    if (!safeRelative(relative) || relative == "." || relative == "modloader" || relative == "_outside")
-        return result;
+    if (!safeRelative(relative) || internalPath(relative)) return result;
     for (const auto& mod : enabledModDirectories(gameRoot)) {
         const auto candidate = caseInsensitivePath(mod, relative);
         std::error_code error;
@@ -192,6 +199,64 @@ inline std::vector<std::filesystem::path> overlayDirectories(
             result.push_back(candidate);
     }
     return result;
+}
+
+inline bool wildcardMatch(std::string pattern, std::string name) {
+    pattern = lowerName(std::move(pattern));
+    name = lowerName(std::move(name));
+    if (pattern == "*.*") pattern = "*";
+    size_t p=0,n=0,star=std::string::npos,retry=0;
+    while(n<name.size()) {
+        if(p<pattern.size()&&(pattern[p]=='?'||pattern[p]==name[n])) {++p;++n;}
+        else if(p<pattern.size()&&pattern[p]=='*') {star=p++;retry=n;}
+        else if(star!=std::string::npos) {p=star+1;n=++retry;}
+        else return false;
+    }
+    while(p<pattern.size()&&pattern[p]=='*')++p;
+    return p==pattern.size();
+}
+
+struct DirectoryListing {
+    bool found = false;
+    std::vector<std::filesystem::path> entries;
+};
+
+inline DirectoryListing mergeDirectory(const std::filesystem::path& gameRoot,
+        const std::filesystem::path& relative, const std::filesystem::path& originalDirectory,
+        const std::string& pattern) {
+    DirectoryListing listing;
+    if (!safeRelative(relative)) return listing;
+
+    std::map<std::string,std::filesystem::path> selected;
+    std::filesystem::path dotDirectory = originalDirectory;
+    auto addDirectory = [&](const std::filesystem::path& scan,
+            const std::filesystem::path& safetyRoot, bool replace) {
+        std::error_code error;
+        if (!std::filesystem::is_directory(scan,error) || error || !within(safetyRoot,scan)) return;
+        if (!listing.found) dotDirectory = scan;
+        listing.found = true;
+        std::filesystem::directory_iterator it(scan,error),end;
+        while (!error && it != end) {
+            const auto path = it->path();
+            const auto name = path.filename().string();
+            if (wildcardMatch(pattern,name) && within(safetyRoot,path)) {
+                const auto key = lowerName(name);
+                if (replace) selected[key] = path;
+                else selected.emplace(key,path);
+            }
+            it.increment(error);
+        }
+    };
+
+    addDirectory(originalDirectory,gameRoot,false);
+    for (const auto& mod : overlayDirectories(gameRoot,relative))
+        addDirectory(mod,mod,true);
+
+    if (!listing.found) return listing;
+    if (wildcardMatch(pattern,".")) selected.emplace(".",dotDirectory/".");
+    if (wildcardMatch(pattern,"..")) selected.emplace("..",dotDirectory/"..");
+    for (const auto& entry : selected) listing.entries.push_back(entry.second);
+    return listing;
 }
 
 } // namespace nfs_mod_fs
