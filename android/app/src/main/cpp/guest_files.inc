@@ -162,7 +162,7 @@ bool writeFindData(uint32_t out,const std::filesystem::path& path){
     std::memcpy(ptr(out+44,name.size()+1),name.c_str(),name.size()+1);return true;
 }
 void findFirstFile(){
-    auto requested=guestString(arg(0));std::replace(requested.begin(),requested.end(),'\\\\','/');
+    auto requested=guestString(arg(0));std::replace(requested.begin(),requested.end(),'\\','/');
     if(requested.empty()||requested.back()=='/'){lastError=123;ret(UINT32_MAX,2);return;}
     auto separator=requested.find_last_of('/');auto pattern=requested.substr(separator==std::string::npos?0:separator+1);
     auto directory=gamePath(separator==std::string::npos?".":requested.substr(0,separator));
