@@ -81,6 +81,8 @@ int main() {
                 "directory metadata uses the same priority order");
         require(nfs_mod_fs::resolveAny(root, fs::path("cars/newfolder"), replacement, modName),
                 "metadata resolver accepts mod-only directories");
+        require(!nfs_mod_fs::resolveAny(root, fs::path("."), replacement, modName),
+                "metadata lookup for the game root never resolves to a mod root");
 
         const auto listing = nfs_mod_fs::mergeDirectory(root, fs::path("CARS"), root / "CARS", "*.*");
         require(listing.found, "merged directory exists");
