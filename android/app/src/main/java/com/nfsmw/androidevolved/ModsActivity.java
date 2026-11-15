@@ -234,9 +234,12 @@ public final class ModsActivity extends Activity {
         String modName = safeModName(displayName);
         if (modName.isEmpty()) { toast("Invalid archive name"); return; }
         File destination = new File(modsRoot(), modName);
-        if (destination.exists()) {
-            toast("A mod named " + modName + " already exists");
-            return;
+        File[] installed = modsRoot().listFiles();
+        if (installed != null) for (File item : installed) {
+            if (item.getName().equalsIgnoreCase(modName)) {
+                toast("A mod named " + item.getName() + " already exists");
+                return;
+            }
         }
         importing = true;
         refresh();
