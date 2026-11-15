@@ -111,7 +111,10 @@ public final class ModsActivity extends Activity {
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         Button back = button("BACK TO GAME LAUNCHER", false);
-        back.setOnClickListener(v -> {\n            startActivity(new Intent(this, LauncherActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));\n            finish();\n        });
+        back.setOnClickListener(v -> {
+            startActivity(new Intent(this, LauncherActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));
+            finish();
+        });
         LinearLayout.LayoutParams backParams = new LinearLayout.LayoutParams(-1, dp(46));
         backParams.topMargin = dp(10);
         root.addView(back, backParams);
