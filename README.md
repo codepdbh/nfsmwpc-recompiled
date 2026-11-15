@@ -89,7 +89,7 @@ Android runtime fixes and current verification limits: [bring-up notes](docs/AND
 config/    reference executable, forced seeds, hooks, overrides (Most Wanted only)
 scripts/   binary analysis, seed discovery, lift driver, Windows build/test
 src/       Windows host, runtime adapters, Most Wanted shims
-docs/      binary report, Android bring-up notes, mod-loader design and safety contract
+docs/      Android bring-up, mod-loader design, Mods Manager and safety notes
 android/   Android app (launcher, touch controls, D3D9→Vulkan bridge, guest runtime)
 work/      (local only) analysis copy, catalog, logs
 ```
