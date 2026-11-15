@@ -39,14 +39,13 @@ std::filesystem::path moddedReadPath(const std::filesystem::path& original) {
     return replacement;
 }
 std::filesystem::path moddedAttributePath(const std::filesystem::path& original) {
-    auto file=moddedReadPath(original);
-    if(file!=original)return file;
     std::error_code error;
     const auto root=std::filesystem::weakly_canonical(hostGameRoot,error);
     if(error)return original;
     const auto relative=original.lexically_relative(root);
     std::filesystem::path replacement;std::string modName;
-    return nfs_mod_fs::resolveDirectory(root,relative,replacement,modName)?replacement:original;
+    if(!nfs_mod_fs::resolveAny(root,relative,replacement,modName))return original;
+    return replacement;
 }
 std::map<uint32_t,int> fileHandles;uint32_t nextFileHandle=0xf0060000;
 // The game skips its CD-drive check when the game folder holds a file named
