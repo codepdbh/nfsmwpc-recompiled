@@ -120,7 +120,7 @@ jobs:
         working-directory: nfsmw
         run: |
           set -euo pipefail
-          test -f ../pcrecomp/runtime/recomp32/recomp.h || {
+          test -f ../pcrecomp/runtime/recomp32/recomp_types.h || {
             echo "::error::The checked-out pcrecomp tree does not contain runtime/recomp32/recomp.h"
             exit 1
           }
