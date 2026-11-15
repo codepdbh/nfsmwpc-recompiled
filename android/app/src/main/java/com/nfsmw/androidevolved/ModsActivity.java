@@ -270,11 +270,11 @@ public final class ModsActivity extends Activity {
                 deleteTree(staging);
                 deleteTree(destination);
             }
-            final String result = error;
+            final String importError = error;
             runOnUiThread(() -> {
                 importing = false;
                 refresh();
-                toast(result == null ? "Imported " + modName : "Import failed: " + result);
+                toast(importError == null ? "Imported " + modName : "Import failed: " + importError);
             });
         }, "mod-zip-import").start();
     }
