@@ -36,4 +36,4 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Compile Android Java sources
         working-directory: android
-        run: ./gradlew :app:compileDebugJavaWithJavac --no-daemon
+        run: bash ./gradlew :app:compileDebugJavaWithJavac --no-daemon
