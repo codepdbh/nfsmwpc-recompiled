@@ -132,6 +132,26 @@ inline bool resolveFile(const std::filesystem::path& gameRoot,
     return found;
 }
 
+
+inline bool resolveDirectory(const std::filesystem::path& gameRoot,
+        const std::filesystem::path& relative, std::filesystem::path& replacement,
+        std::string& modName) {
+    if (!safeRelative(relative) || relative == "." || relative == "modloader" || relative == "_outside")
+        return false;
+    bool found = false;
+    for (const auto& mod : enabledModDirectories(gameRoot)) {
+        const auto candidate = caseInsensitivePath(mod, relative);
+        std::error_code error;
+        if (candidate.empty() || !std::filesystem::is_directory(candidate, error) || error ||
+                !within(mod, candidate))
+            continue;
+        replacement = candidate;
+        modName = mod.filename().string();
+        found = true; // Same alphabetical priority as file replacement.
+    }
+    return found;
+}
+
 inline std::vector<std::filesystem::path> overlayDirectories(
         const std::filesystem::path& gameRoot, const std::filesystem::path& relative) {
     std::vector<std::filesystem::path> result;
