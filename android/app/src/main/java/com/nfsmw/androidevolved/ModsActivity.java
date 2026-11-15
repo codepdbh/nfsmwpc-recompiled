@@ -121,19 +121,26 @@ public final class ModsActivity extends Activity {
     private void refresh() {
         list.removeAllViews();
         File folder = modsRoot();
-        if (!storageAllowed()) {\n            summary.setText("Storage access is required to manage nfsmw/modloader.");\n            add.setEnabled(false);\n            return;\n        }\n        if (!folder.isDirectory() && !folder.mkdirs()) {
-            summary.setText("Cannot create modloader folder:\n" + folder);
+        if (!storageAllowed()) {
+            summary.setText("Storage access is required to manage nfsmw/modloader.");
+            add.setEnabled(false);
+            return;
+        }
+        if (!folder.isDirectory() && !folder.mkdirs()) {
+            summary.setText("Cannot create modloader folder:
+" + folder);
             add.setEnabled(false);
             return;
         }
         File[] children = folder.listFiles(file -> file.isDirectory() && !java.nio.file.Files.isSymbolicLink(file.toPath()));
         List<File> mods = new ArrayList<>();
         if (children != null) for (File child : children)
-            if (!child.getName().startsWith(".") || child.getName().length() > 1) mods.add(child);
+            if ((!child.getName().startsWith(".") || child.getName().length() > 1) && !child.getName().startsWith(".import-") && !java.nio.file.Files.isSymbolicLink(child.toPath())) mods.add(child);
         Collections.sort(mods, Comparator.comparing(f -> f.getName().toLowerCase(Locale.ROOT)));
         int enabled = 0;
         for (File mod : mods) if (!mod.getName().startsWith(".")) enabled++;
-        summary.setText(enabled + " enabled · " + (mods.size() - enabled) + " disabled\n" + folder.getAbsolutePath());
+        summary.setText(enabled + " enabled · " + (mods.size() - enabled) + " disabled
+" + folder.getAbsolutePath());
         add.setEnabled(!importing);
         if (mods.isEmpty()) {
             TextView empty = text("No mods installed. Import a ZIP archive to begin.", 15, 0xBBFFFFFF, false);
