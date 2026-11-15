@@ -127,8 +127,7 @@ public final class ModsActivity extends Activity {
             return;
         }
         if (!folder.isDirectory() && !folder.mkdirs()) {
-            summary.setText("Cannot create modloader folder:
-" + folder);
+            summary.setText("Cannot create modloader folder:\n" + folder);
             add.setEnabled(false);
             return;
         }
@@ -139,8 +138,7 @@ public final class ModsActivity extends Activity {
         Collections.sort(mods, Comparator.comparing(f -> f.getName().toLowerCase(Locale.ROOT)));
         int enabled = 0;
         for (File mod : mods) if (!mod.getName().startsWith(".")) enabled++;
-        summary.setText(enabled + " enabled · " + (mods.size() - enabled) + " disabled
-" + folder.getAbsolutePath());
+        summary.setText(enabled + " enabled · " + (mods.size() - enabled) + " disabled\n" + folder.getAbsolutePath());
         add.setEnabled(!importing);
         if (mods.isEmpty()) {
             TextView empty = text("No mods installed. Import a ZIP archive to begin.", 15, 0xBBFFFFFF, false);
@@ -219,6 +217,7 @@ public final class ModsActivity extends Activity {
     }
 
     private boolean deleteTree(File file) {
+        if (java.nio.file.Files.isSymbolicLink(file.toPath())) return file.delete();
         File[] children = file.listFiles();
         if (children != null) for (File child : children) if (!deleteTree(child)) return false;
         return !file.exists() || file.delete();
