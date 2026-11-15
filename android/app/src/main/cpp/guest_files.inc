@@ -152,15 +152,6 @@ void shellFolderPath(){
 }
 struct GuestFileSearch {std::vector<std::filesystem::path> paths;size_t next=0;};
 std::map<uint32_t,GuestFileSearch> fileSearches;uint32_t nextSearchHandle=0xf0070000;
-bool filePatternMatches(std::string pattern,std::string name){
-    pattern=lower(pattern);name=lower(name);if(pattern=="*.*")pattern="*";
-    size_t p=0,n=0,star=std::string::npos,retry=0;
-    while(n<name.size()){
-        if(p<pattern.size()&&(pattern[p]=='?'||pattern[p]==name[n])){++p;++n;}
-        else if(p<pattern.size()&&pattern[p]=='*'){star=p++;retry=n;}
-        else if(star!=std::string::npos){p=star+1;n=++retry;}else return false;
-    }while(p<pattern.size()&&pattern[p]=='*')++p;return p==pattern.size();
-}
 bool writeFindData(uint32_t out,const std::filesystem::path& path){
     if(!out||!memory->writable(out,320)){lastError=87;return false;}
     struct stat status{};if(::stat(path.c_str(),&status)){lastError=fileError();return false;}
@@ -180,37 +171,10 @@ void findFirstFile(){
     if(rootError){lastError=5;ret(UINT32_MAX,2);return;}
     const auto relative=directory.lexically_relative(root);
     if(!nfs_mod_fs::safeRelative(relative)){lastError=5;ret(UINT32_MAX,2);return;}
-
-    // Build a virtual directory: the original files are the fallback, and each
-    // enabled mod replaces same-named entries in alphabetical load order.
-    std::map<std::string,std::filesystem::path> selected;
-    bool anyDirectory=false;std::filesystem::path dotDirectory=directory;
-    auto addDirectory=[&](const std::filesystem::path& scan,const std::filesystem::path& safetyRoot,bool mod,bool replace){
-        std::error_code directoryError;
-        if(!std::filesystem::is_directory(scan,directoryError)||directoryError||!nfs_mod_fs::within(safetyRoot,scan))return;
-        if(!anyDirectory)dotDirectory=scan;
-        anyDirectory=true;
-        std::filesystem::directory_iterator it(scan,directoryError),finish;
-        while(!directoryError&&it!=finish){
-            const auto path=it->path();const auto name=path.filename().string();
-            if(filePatternMatches(pattern,name)&&nfs_mod_fs::within(mod?safetyRoot:root,path)){
-                const auto key=lower(name);
-                if(replace)selected[key]=path;else selected.emplace(key,path);
-            }
-            it.increment(directoryError);
-        }
-    };
-
-    addDirectory(directory,root,false,false);
-    for(const auto& mod:nfs_mod_fs::overlayDirectories(root,relative))
-        addDirectory(mod,mod,true,true);
-    if(!anyDirectory){std::error_code error;lastError=std::filesystem::exists(directory,error)?5:3;ret(UINT32_MAX,2);return;}
-    if(filePatternMatches(pattern,"."))selected.emplace(".",dotDirectory/".");
-    if(filePatternMatches(pattern,".."))selected.emplace("..",dotDirectory/"..");
-    if(selected.empty()){lastError=2;ret(UINT32_MAX,2);return;}
-
-    GuestFileSearch search;
-    for(const auto& entry:selected)search.paths.push_back(entry.second);
+    auto listing=nfs_mod_fs::mergeDirectory(root,relative,directory,pattern);
+    if(!listing.found){std::error_code error;lastError=std::filesystem::exists(directory,error)?5:3;ret(UINT32_MAX,2);return;}
+    if(listing.entries.empty()){lastError=2;ret(UINT32_MAX,2);return;}
+    GuestFileSearch search;search.paths=std::move(listing.entries);
     if(!writeFindData(arg(1),search.paths.front())){ret(UINT32_MAX,2);return;}
     search.next=1;uint32_t handle=nextSearchHandle++;fileSearches.emplace(handle,std::move(search));ret(handle,2);
 }
