@@ -133,6 +133,33 @@ inline bool resolveFile(const std::filesystem::path& gameRoot,
 }
 
 
+
+inline bool resolveAny(const std::filesystem::path& gameRoot,
+        const std::filesystem::path& relative, std::filesystem::path& replacement,
+        std::string& modName) {
+    if (!safeRelative(relative)) return false;
+    auto first = relative.begin();
+    if (first != relative.end()) {
+        const auto top = lowerName(first->string());
+        if (top == "modloader" || top == "_outside") return false;
+    }
+    bool found = false;
+    for (const auto& mod : enabledModDirectories(gameRoot)) {
+        const auto candidate = caseInsensitivePath(mod, relative);
+        std::error_code error;
+        if (candidate.empty() || !std::filesystem::exists(candidate, error) || error ||
+                (!std::filesystem::is_regular_file(candidate, error) &&
+                 !std::filesystem::is_directory(candidate, error)) || error ||
+                !within(mod, candidate))
+            continue;
+        replacement = candidate;
+        modName = mod.filename().string();
+        found = true;
+    }
+    return found;
+}
+
+
 inline bool resolveDirectory(const std::filesystem::path& gameRoot,
         const std::filesystem::path& relative, std::filesystem::path& replacement,
         std::string& modName) {
