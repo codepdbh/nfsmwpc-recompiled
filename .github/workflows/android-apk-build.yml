@@ -42,7 +42,7 @@ jobs:
       - name: Checkout pcrecomp
         uses: actions/checkout@v4
         with:
-          repository: codepdbh/pcrecomp
+          repository: sp00nznet/pcrecomp
           path: pcrecomp
 
       - name: Checkout shared NFSU2 Android infrastructure
@@ -50,6 +50,13 @@ jobs:
         with:
           repository: codepdbh/nfsu2-recompiled
           path: nfsu2-recompiled
+
+      - name: Checkout pinned DXVK native source
+        uses: actions/checkout@v4
+        with:
+          repository: Joshua-Ashton/dxvk-native
+          ref: c8dc91fabd00cac11d697ccf07426e798393cd40
+          path: dxvk-native
 
       - name: Download generated game sources
         env:
@@ -81,6 +88,15 @@ jobs:
           cp -a generated-sources/src/recomp/gen_server nfsmw/src/recomp/
           cp -a generated-sources/src/recomp/gen_d3dx nfsmw/src/recomp/
           cp -a generated-sources/src/recomp/gen_abk nfsmw/src/recomp/
+
+      - name: Prepare shared DXVK Android backend
+        working-directory: nfsu2-recompiled
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y glslang-tools spirv-tools
+          python3 ports/dxvk_android/prepare.py ../dxvk-native build/dxvk-source
+          python3 ports/dxvk_android/shaders.py build/dxvk-source
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
