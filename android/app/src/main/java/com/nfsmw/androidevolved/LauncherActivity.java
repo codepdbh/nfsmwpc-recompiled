@@ -226,6 +226,7 @@ public final class LauncherActivity extends Activity {
         optionsList.addView(optionRow(tr("Idioma del juego"), languageLabel(), this::chooseLanguage));
         for (GameOptions.Option option : GameOptions.ALL)
             optionsList.addView(optionRow(tr(option.title), tr(option.label(GameOptions.get(this, option.key))), () -> chooseOption(option)));
+        optionsList.addView(optionRow(tr("Mods Manager"), tr("Installar, activar y desactivar mods"), () -> startActivity(new Intent(this, ModsActivity.class))));
         optionsList.addView(optionRow(tr("Servidor online"), GameOptions.onlineServer(this), this::chooseOnlineServer));
         optionsList.addView(optionRow(tr("Buscar actualizaciones"),
                 checkingUpdates ? tr("Comprobando GitHub…") : tr("Versión %s", ReleaseUpdates.installed(this)), () -> checkUpdates(true)));
