@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <string>
 #include <system_error>
@@ -134,7 +135,8 @@ inline bool resolveFile(const std::filesystem::path& gameRoot,
 inline std::vector<std::filesystem::path> overlayDirectories(
         const std::filesystem::path& gameRoot, const std::filesystem::path& relative) {
     std::vector<std::filesystem::path> result;
-    if (!safeRelative(relative)) return result;
+    if (!safeRelative(relative) || relative == "." || relative == "modloader" || relative == "_outside")
+        return result;
     for (const auto& mod : enabledModDirectories(gameRoot)) {
         const auto candidate = caseInsensitivePath(mod, relative);
         std::error_code error;
