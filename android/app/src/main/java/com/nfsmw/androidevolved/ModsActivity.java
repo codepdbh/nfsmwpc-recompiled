@@ -5,6 +5,10 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Build;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.provider.Settings;
 import android.os.Environment;
 import android.view.Gravity;
 import android.view.View;
@@ -37,6 +41,28 @@ public final class ModsActivity extends Activity {
     private Button add;
     private volatile boolean importing;
 
+    private boolean storageAllowed() {
+        return Build.VERSION.SDK_INT >= 30 ? Environment.isExternalStorageManager()
+                : checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+                    && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void requestStorageAccess() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        } else {
+            requestPermissions(new String[] {Manifest.permission.READ_EXTERNAL_STORAGE,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE}, 72);
+        }
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        if (list != null) refresh();
+    }
+
     private File gameRoot() { return new File(Environment.getExternalStorageDirectory(), "nfsmw"); }
     private File modsRoot() { return new File(gameRoot(), "modloader"); }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
@@ -59,6 +85,12 @@ public final class ModsActivity extends Activity {
         root.addView(title);
         TextView subtitle = text("PC version · Android companion", 13, 0x99FFFFFF, false);
         root.addView(subtitle);
+
+        Button storage = button("ALLOW GAME FOLDER ACCESS", false);
+        storage.setOnClickListener(v -> requestStorageAccess());
+        LinearLayout.LayoutParams storageParams = new LinearLayout.LayoutParams(-1, dp(42));
+        storageParams.topMargin = dp(10);
+        root.addView(storage, storageParams);
 
         summary = text("", 13, 0xDDFFFFFF, false);
         summary.setPadding(0, dp(12), 0, dp(10));
@@ -89,12 +121,12 @@ public final class ModsActivity extends Activity {
     private void refresh() {
         list.removeAllViews();
         File folder = modsRoot();
-        if (!folder.isDirectory() && !folder.mkdirs()) {
+        if (!storageAllowed()) {\n            summary.setText("Storage access is required to manage nfsmw/modloader.");\n            add.setEnabled(false);\n            return;\n        }\n        if (!folder.isDirectory() && !folder.mkdirs()) {
             summary.setText("Cannot create modloader folder:\n" + folder);
             add.setEnabled(false);
             return;
         }
-        File[] children = folder.listFiles(File::isDirectory);
+        File[] children = folder.listFiles(file -> file.isDirectory() && !java.nio.file.Files.isSymbolicLink(file.toPath()));
         List<File> mods = new ArrayList<>();
         if (children != null) for (File child : children)
             if (!child.getName().startsWith(".") || child.getName().length() > 1) mods.add(child);
