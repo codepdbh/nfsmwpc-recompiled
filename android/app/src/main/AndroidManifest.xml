@@ -10,7 +10,7 @@
             android:configChanges="orientation|screenSize|keyboardHidden" android:screenOrientation="sensorLandscape">
             <meta-data android:name="android.app.lib_name" android:value="nfsmw_android" />
         </activity>
-        <activity android:name=".ModsActivity" android:exported="true" android:process=":mods" android:screenOrientation="sensorLandscape" android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen">\n            <intent-filter>\n                <action android:name="android.intent.action.MAIN" />\n                <category android:name="android.intent.category.LAUNCHER" />\n            </intent-filter>\n        </activity>\n        <activity android:name=".GpuProbeActivity" android:exported="false"
+        <activity android:name=".ModsActivity" android:label="NFSMW Mods Manager" android:exported="true" android:process=":mods" android:screenOrientation="sensorLandscape" android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen">\n            <intent-filter>\n                <action android:name="android.intent.action.MAIN" />\n                <category android:name="android.intent.category.LAUNCHER" />\n            </intent-filter>\n        </activity>\n        <activity android:name=".GpuProbeActivity" android:exported="false"
             android:process=":gpu_probe" android:screenOrientation="sensorLandscape" />
         <activity android:name=".LauncherActivity" android:exported="true" android:screenOrientation="sensorLandscape"
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen">
