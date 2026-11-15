@@ -1,0 +1,25 @@
+name: Mod filesystem tests
+
+on:
+  push:
+    paths:
+      - "android/app/src/main/cpp/mod_filesystem.h"
+      - "android/app/src/main/cpp/guest_files.inc"
+      - "tests/mod_filesystem.cpp"
+      - ".github/workflows/mod-filesystem-tests.yml"
+  pull_request:
+    paths:
+      - "android/app/src/main/cpp/mod_filesystem.h"
+      - "android/app/src/main/cpp/guest_files.inc"
+      - "tests/mod_filesystem.cpp"
+      - ".github/workflows/mod-filesystem-tests.yml"
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile mod filesystem tests
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic tests/mod_filesystem.cpp -o /tmp/mod-filesystem-tests
+      - name: Run mod filesystem tests
+        run: /tmp/mod-filesystem-tests
