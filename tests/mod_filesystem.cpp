@@ -94,7 +94,7 @@ int main() {
                 "virtual directory listing combines files from multiple enabled mods");
         require(named(listing, "disabled_only.bin") == nullptr,
                 "virtual directory listing ignores disabled mods");
-        require(named(listing, "NewFolder") != nullptr,
+        require(named(listing, "newfolder") != nullptr,
                 "virtual directory listing exposes mod-only directories");
         require(named(listing, ".") != nullptr && named(listing, "..") != nullptr,
                 "Windows directory enumeration includes dot entries");
