@@ -38,6 +38,16 @@ std::filesystem::path moddedReadPath(const std::filesystem::path& original) {
             key.c_str(),modName.c_str(),replacement.filename().string().c_str());
     return replacement;
 }
+std::filesystem::path moddedAttributePath(const std::filesystem::path& original) {
+    auto file=moddedReadPath(original);
+    if(file!=original)return file;
+    std::error_code error;
+    const auto root=std::filesystem::weakly_canonical(hostGameRoot,error);
+    if(error)return original;
+    const auto relative=original.lexically_relative(root);
+    std::filesystem::path replacement;std::string modName;
+    return nfs_mod_fs::resolveDirectory(root,relative,replacement,modName)?replacement:original;
+}
 std::map<uint32_t,int> fileHandles;uint32_t nextFileHandle=0xf0060000;
 // The game skips its CD-drive check when the game folder holds a file named
 // "foobar" (its developer switch, 0x0057CAC0("foobar")). Copies made without
@@ -55,8 +65,9 @@ void fileType(){
     lastError=6;ret(0,1);
 }
 void longPath(){
-    auto path=gamePath(guestString(arg(0)));std::error_code error;if(!std::filesystem::exists(path,error)){lastError=2;ret(0,3);return;}
-    auto relative=path.lexically_relative(std::filesystem::weakly_canonical(hostGameRoot)).string();
+    auto original=gamePath(guestString(arg(0)));auto path=moddedAttributePath(original);
+    std::error_code error;if(!std::filesystem::exists(path,error)){lastError=2;ret(0,3);return;}
+    auto relative=original.lexically_relative(std::filesystem::weakly_canonical(hostGameRoot)).string();
     std::string result="C:\\nfsmw";if(relative!="."&&!relative.empty())result+="\\"+relative;std::replace(result.begin(),result.end(),'/','\\');
     if(arg(2)<=result.size()){ret(result.size()+1,3);return;}std::memcpy(ptr(arg(1),result.size()+1),result.c_str(),result.size()+1);ret(result.size(),3);
 }
@@ -117,7 +128,7 @@ void setEndOfFile(){auto file=fileHandles.find(arg(0));if(file==fileHandles.end(
     auto position=::lseek(file->second,0,SEEK_CUR);if(position<0||::ftruncate(file->second,position)){lastError=fileError();ret(0,1);return;}ret(1,1);
 }
 void fileSize(){auto file=fileHandles.find(arg(0));struct stat status{};if(file==fileHandles.end()){lastError=6;ret(UINT32_MAX,2);return;}if(fstat(file->second,&status)){lastError=fileError();ret(UINT32_MAX,2);return;}uint64_t size=status.st_size;if(arg(1))write32(arg(1),size>>32);lastError=0;ret(size,2);}
-void fileAttributes(){auto path=gamePath(guestString(arg(0)));path=moddedReadPath(path);struct stat status{};if(discCheckSwitch(path)){ret(0x20,1);return;}if(stat(path.c_str(),&status)){lastError=fileError();ret(UINT32_MAX,1);return;}ret(S_ISDIR(status.st_mode)?0x10:0x20,1);}
+void fileAttributes(){auto path=moddedAttributePath(gamePath(guestString(arg(0))));struct stat status{};if(discCheckSwitch(path)){ret(0x20,1);return;}if(stat(path.c_str(),&status)){lastError=fileError();ret(UINT32_MAX,1);return;}ret(S_ISDIR(status.st_mode)?0x10:0x20,1);}
 void setFilePointer(){
     auto file=fileHandles.find(arg(0));if(file==fileHandles.end()){lastError=6;ret(UINT32_MAX,4);return;}
     uint32_t method=arg(3),high=arg(2);if(method>2){lastError=87;ret(UINT32_MAX,4);return;}
