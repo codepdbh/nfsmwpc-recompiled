@@ -138,7 +138,7 @@ inline bool resolveFile(const std::filesystem::path& gameRoot,
 inline bool resolveAny(const std::filesystem::path& gameRoot,
         const std::filesystem::path& relative, std::filesystem::path& replacement,
         std::string& modName) {
-    if (!safeRelative(relative)) return false;
+    if (!safeRelative(relative) || relative == ".") return false;
     auto first = relative.begin();
     if (first != relative.end()) {
         const auto top = lowerName(first->string());
