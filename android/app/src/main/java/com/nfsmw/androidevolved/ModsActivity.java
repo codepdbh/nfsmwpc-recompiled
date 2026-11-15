@@ -287,6 +287,9 @@ public final class ModsActivity extends Activity {
                 String raw = entry.getName().replace('\\', '/');
                 if (raw.startsWith("/") || raw.matches("^[A-Za-z]:.*"))
                     throw new IllegalStateException("Archive contains an absolute path");
+                for (String component : raw.split("/"))
+                    if (component.equals(".."))
+                        throw new IllegalStateException("Archive contains a parent-directory path");
                 File output = new File(destination, raw);
                 String base = destination.getCanonicalPath() + File.separator;
                 String canonical = output.getCanonicalPath();
