@@ -116,6 +116,10 @@ final class Lang {
         add("Guardar", "Save", "Salvar");
         add("Restaurar", "Restore", "Restaurar");
         add("Volver", "Back", "Voltar");
+        add("Carrera LAN", "LAN race", "Corrida LAN");
+        add("Tu server.dll no es la versión con la que se preparó esta app, así que este teléfono no puede crear una carrera LAN. Sí puedes unirte a una que cree otro jugador. Para crearla, copia en la carpeta nfsmw el server.dll de la misma instalación de PC de donde sacaste speed.exe.",
+                "Your server.dll is not the version this app was prepared with, so this phone cannot host a LAN race. You can still join one another player hosts. To host, copy into the nfsmw folder the server.dll from the same PC installation your speed.exe came from.",
+                "O seu server.dll não é a versão com que este app foi preparado, então este telefone não pode criar uma corrida LAN. Você ainda pode entrar em uma criada por outro jogador. Para criar, copie para a pasta nfsmw o server.dll da mesma instalação de PC de onde veio o speed.exe.");
         add("Recomendado para tu Snapdragon: Turnip (Mesa) para Adreno 6xx/7xx si el driver del sistema va lento o con errores gráficos. PanVK no sirve para Adreno.",
                 "Recommended for your Snapdragon: Turnip (Mesa) for Adreno 6xx/7xx if the system driver is slow or shows graphics glitches. PanVK does not work on Adreno.",
                 "Recomendado para o seu Snapdragon: Turnip (Mesa) para Adreno 6xx/7xx se o driver do sistema estiver lento ou com erros gráficos. PanVK não funciona em Adreno.");
