@@ -100,7 +100,10 @@ void moduleHandleW() {
 std::map<uint32_t,uint32_t> moduleReferences;
 void loadLibrary(){
     auto name=lower(guestString(arg(0)));auto slash=name.find_last_of("/\\");if(slash!=std::string::npos)name=name.substr(slash+1);if(name.find('.')==std::string::npos)name+=".dll";
-    NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSMW","Guest LoadLibrary %s",name.c_str());
+    // Called every frame for d3d9.dll: one line per name (logcat and game.log cost time).
+    static std::set<std::string> loggedLoads;
+    if(loggedLoads.insert(name).second)
+        NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSMW","Guest LoadLibrary %s",name.c_str());
     auto module=modules.find(name);
     if(module==modules.end()){uint32_t loaded=loadGuestModule(name);if(!loaded)lastError=126;ret(loaded,1);return;}
     auto& count=moduleReferences[module->second];if(!count)count=1;++count;ret(module->second,1);

@@ -308,7 +308,10 @@ void moduleHandle() {
     if(name.find('.')==std::string::npos) name+=".dll";
     if(uint32_t loaded=guestModuleHandle(name)) { ret(loaded,1); return; }
     auto module=modules.find(name);
-    NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSMW","Module lookup %s",name.c_str());
+    // Asked every frame for d3d9.dll and d3d9d.dll: one line per name, not one per call.
+    static std::set<std::string> loggedLookups;
+    if(loggedLookups.insert(name).second)
+        NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSMW","Module lookup %s",name.c_str());
     if(module==modules.end()) lastError=126;
     ret(module==modules.end()?0:module->second,1);
 }
@@ -766,7 +769,7 @@ extern "C" void recomp_dump_trace(const char*) {}
 // resolution menu is not mapped yet, so the game keeps its own modes and DXVK scales.)
 
 std::string connectGuestRuntime(const char* executable) {
-    stayOnPerformanceCores();
+    stayOnPerformanceCores(true);  // the guest main thread
     std::unique_lock<MachineMutex> guard(machine);machineLease=&guard;
     if (memory) return "Runtime guest ya inicializado";
     State original; original.save();
