@@ -419,17 +419,23 @@ final class RacingControlsView extends View {
         }
         return best;
     }
+    // Redraw only when what is drawn changed: a held pedal delivers ACTION_MOVE at
+    // the touch sampling rate (120+ Hz) and an invalidate() per event kept the
+    // HWUI RenderThread busy during a race, next to the game (NFSU2 port).
     private void hold(Control c) {
         if(c==null||++c.held!=1)return;
+        invalidate();
         if(c.scan>=0)keys.set(c.scan,true);
         performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
     }
     private void release(Control c) { if(c!=null && --c.held==0) {
+        invalidate();
         if(c.scan>=0)keys.set(c.scan,false);
         else if(c.scan==STICK) {c.steering=0;keys.set(0xcb,false);keys.set(0xcd,false);}
     } }
     private void steer(Control c,float x) {
-        c.steering=Math.max(-1,Math.min(1,(x/scale-c.area.centerX())/(c.area.width()/2)));
+        float steering=Math.max(-1,Math.min(1,(x/scale-c.area.centerX())/(c.area.width()/2)));
+        if(Math.abs(steering-c.steering)>=0.01f){c.steering=steering;invalidate();}
         keys.set(0xcb,c.steering<-.18f);keys.set(0xcd,c.steering>.18f);
     }
     void setPointer(Pointer pointer) { this.pointer=pointer; }
@@ -487,7 +493,7 @@ final class RacingControlsView extends View {
             }
             if(action==MotionEvent.ACTION_UP)releaseAll();  // the last finger left
         }
-        invalidate();return true;
+        return true;   // hold/release/steer/pointerTouch invalidate when something drawn changed
     }
     private String tr(String spanish,Object... args) {return Lang.t(getContext(),spanish,args);}
     @Override public boolean performClick() { super.performClick();return true; }
